@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+
+<head>
+    <style>
+        /* Layout */
+        .container {
+            display: flex;
+        }
+
+        .row {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        .column {
+            display: flex;
+            flex-direction: column;
+            flex-basis: 100%;
+            flex: 1;
+        }
+
+        .is-1 {
+            flex: 1;
+        }
+
+        .is-2 {
+            flex: 2;
+        }
+
+        .is-4 {
+            flex: 4;
+        }
+
+        .is-8 {
+            flex: 8;
+        }
+
+        .form :is(h1, h2, h3, textarea, button) {
+            margin: 0.5em;
+        }
+    </style>
+    <script defer type="module">
+        import {
+            connect,
+            JSONCodec,
+            AckPolicy,
+        } from "https://cdn.jsdelivr.net/npm/nats.ws@1.18.0/esm/nats.js";
+        // Initialize a string codec for encoding and decoding message data.
+        // This is needed because NATS message data is just byte arrays, so proper
+        // encoding and decoding needs to be performed when using and working
+        // with the message data.
+        // See also JSONCodec.
+        const sc = new JSONCodec();
+
+        // Establish a connection to the NATS demo server. This uses the
+        // native WebSocket support built into the NATS server.
+        const nc = await connect({
+            servers: ["wss://demo.nats.io:8443"],
+        });
+        const jsm = await nc.jetstreamManager();
+        const js = nc.jetstream();
+
+        const streamName = "mawb";
+        const consumerName = "integration";
+
+
+        async function update_consumer_info() {
+            console.log("Update consumer info");
+            const id = "#consumer_info";
+            const ci = await jsm.consumers.info(streamName, consumerName);
+            const value = JSON.stringify(ci, undefined, 2)
+            document.querySelector(id).value = value;
+            document.querySelector(id).rows = value.split('\n').length + 2;
+
+            if (ci.num_pending > 0) {
+                await update_live_view(ci.delivered.consumer_seq);
+            } else {
+                const id = "#live_messages";
+                document.querySelector(id).value = "All messages delivered";
+            }
+            setTimeout(update_consumer_info, 2000);
+        }
+        update_consumer_info()
+
+        async function update_live_view(seq) {
+            console.log(`Update live view with seq: ${seq}`);
+
+            const consumer = await js.consumers.get(streamName, {
+                opt_start_seq: seq,
+            });
+            const msgs = await consumer.fetch({
+                max_messages: 100,
+                expires: 1000,
+            });
+            let value = "";
+            let rows = 0;
+            for await (const jsMsg of msgs) {
+                const msg = sc.decode(jsMsg.data);
+                const timestamp = new Date(msg.timestamp);
+
+                value += `${jsMsg.seq}: ${msg.mawb} send at ${new Date(timestamp).toLocaleTimeString()}\n`;
+                rows++;
+            }
+
+            const id = "#live_messages";
+            document.querySelector(id).value = value;
+            document.querySelector(id).rows = value.split('\n').length + 2;
+
+        }
+
+
+        window.retrieve = async function (el) {
+            const airline = el.value;
+            const subject = `mawb.${airline}.>`;
+
+            const consumer = await js.consumers.get(streamName, {
+                filterSubjects: subject,
+            });
+
+            document.querySelector("#filtered_messages").value = `Fetching messages from ${subject} ...`;
+            const msgs = await consumer.fetch({
+                max_messages: 1000,
+                expires: 1000,
+            });
+
+            let value = "";
+            let rows = 0;
+            for await (const jsMsg of msgs) {
+                const msg = sc.decode(jsMsg.data);
+                const timestamp = new Date(msg.timestamp);
+
+                value += `${jsMsg.seq}: ${msg.mawb} send at ${new Date(timestamp).toLocaleTimeString()}, processed at ${(new Date()).toLocaleTimeString()}\n`;
+                rows++;
+            }
+
+            document.querySelector("#filtered_messages").value = value;
+            document.querySelector("#filtered_messages").rows = rows + 2;
+        }
+
+    </script>
+</head>
+
+<body>
+    <header>
+        <h1>Dashboard</h1>
+    </header>
+    <div class="container">
+        <div class="row">
+            <div class="column is-2 form">
+                <h2>Consumer info of Integration Service</h2>
+                <textarea id="consumer_info" rows="10"></textarea>
+            </div>
+
+            <div class="column is-2 form">
+                <h2>Live consumer queue of Integration Service</h2>
+                <textarea id="live_messages" rows="10"></textarea>
+            </div>
+            <div class="column is-2 form">
+                <h2>Messages by Airline</h2>
+                <input type="text" onchange="retrieve(this)"></input>
+                <textarea id="filtered_messages" rows="10"></textarea>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

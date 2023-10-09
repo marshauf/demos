@@ -1,0 +1,131 @@
+<!doctype html>
+<html>
+
+<head>
+    <style>
+        /* Layout */
+        .container {
+            display: flex;
+        }
+
+        .row {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        .column {
+            display: flex;
+            flex-direction: column;
+            flex-basis: 100%;
+            flex: 1;
+        }
+
+        .is-1 {
+            flex: 1;
+        }
+
+        .is-2 {
+            flex: 2;
+        }
+
+        .is-4 {
+            flex: 4;
+        }
+
+        .is-8 {
+            flex: 8;
+        }
+
+        .form :is(h1, h2, h3, textarea, button) {
+            margin: 0.5em;
+        }
+    </style>
+    <script defer type="module">
+        import {
+            connect,
+            JSONCodec,
+            AckPolicy,
+        } from "https://cdn.jsdelivr.net/npm/nats.ws@1.18.0/esm/nats.js";
+        // Initialize a string codec for encoding and decoding message data.
+        // This is needed because NATS message data is just byte arrays, so proper
+        // encoding and decoding needs to be performed when using and working
+        // with the message data.
+        // See also JSONCodec.
+        const sc = new JSONCodec();
+
+        // Establish a connection to the NATS demo server. This uses the
+        // native WebSocket support built into the NATS server.
+        const nc = await connect({
+            servers: ["wss://demo.nats.io:8443"],
+        });
+        const jsm = await nc.jetstreamManager();
+        const js = nc.jetstream();
+
+        const streamName = "mawb";
+        const subjects = ["mawb.>"];
+        const stream = await jsm.streams.add({
+            name: streamName,
+            subjects,
+            description: "MAWB demo",
+        });
+        console.log(stream);
+
+
+        function generate_message(mawb) {
+            const timestamp = Date.now();
+            return {
+                mawb,
+                timestamp,
+            };
+        }
+
+        // inclusive on both ends
+        function randomIntFromInterval(min, max) {
+            return Math.floor(Math.random() * (max - min + 1) + min)
+        }
+
+        window.send_messages = function (el) {
+
+            const mawbTextarea = document.querySelector("#mawbs");
+            const mawbs = mawbTextarea.value.split("\n");
+            const numMsgs = Number.parseInt(document.querySelector("#num_messages").value, 10);
+
+            console.log(`Sending ${numMsgs} messages`);
+            for (let i = 0; i < numMsgs; i++) {
+                const mawb = mawbs[randomIntFromInterval(0, mawbs.length - 1)];
+                const msg = generate_message(mawb);
+                const airline = mawb.substring(0, 3);
+                const serialNumber = mawb.substring(3, 10);
+                const check = mawb.substring(10);
+                const subject = `mawb.${airline}.${serialNumber}.${check}`;
+                console.log(subject);
+                const payload = sc.encode(msg);
+                js.publish(subject, payload);
+            }
+        }
+    </script>
+</head>
+
+<body class="container">
+    <div class="column">
+        <header>
+            <h1>Auslagerscheine Generator</h1>
+            <p>Sends messages containing a random MAWB selected from the list of MAWBs and a timestamp.</p>
+        </header>
+        <div class="row">
+            <div class="column form">
+                <h2>MAWBS</h2>
+                <textarea id="mawbs" cols="11" rows="10">LUH01234560</textarea>
+            </div>
+            <div class="column form">
+                <h2>Number of messages</h2>
+                <textarea id="num_messages" rows="1">10</textarea>
+                <button onclick="send_messages()">Send</button>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

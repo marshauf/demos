@@ -1,0 +1,130 @@
+<!doctype html>
+<html>
+
+<head>
+    <style>
+        /* Layout */
+        .container {
+            display: flex;
+        }
+
+        .row {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            width: 100%;
+        }
+
+        .column {
+            display: flex;
+            flex-direction: column;
+            flex-basis: 100%;
+            flex: 1;
+        }
+
+        .is-1 {
+            flex: 1;
+        }
+
+        .is-2 {
+            flex: 2;
+        }
+
+        .is-4 {
+            flex: 4;
+        }
+
+        .is-8 {
+            flex: 8;
+        }
+
+        .form :is(h1, h2, h3, textarea, button) {
+            margin: 0.5em;
+        }
+    </style>
+    <script defer type="module">
+        import {
+            connect,
+            JSONCodec,
+            AckPolicy,
+        } from "https://cdn.jsdelivr.net/npm/nats.ws@1.18.0/esm/nats.js";
+        // Initialize a string codec for encoding and decoding message data.
+        // This is needed because NATS message data is just byte arrays, so proper
+        // encoding and decoding needs to be performed when using and working
+        // with the message data.
+        // See also JSONCodec.
+        const sc = new JSONCodec();
+
+        // Establish a connection to the NATS demo server. This uses the
+        // native WebSocket support built into the NATS server.
+        const nc = await connect({
+            servers: ["wss://demo.nats.io:8443"],
+        });
+        const jsm = await nc.jetstreamManager();
+        const js = nc.jetstream();
+
+        const streamName = "mawb";
+        const consumerName = "integration";
+
+        try {
+            await jsm.consumers.add(streamName, {
+                durable_name: consumerName,
+                ack_policy: "explicit",
+            });
+        } catch (err) {
+            if (err.message == "consumer already exists") {
+            } else {
+
+                console.error(err.name, err.message);
+            }
+
+        }
+        const consumer = await js.consumers.get(streamName, consumerName);
+        const delay = ms => new Promise(res => setTimeout(res, ms));
+
+        function get_processing_time() {
+            return Number.parseInt(document.querySelector("#number").value, 10);
+        }
+
+        async function process() {
+            try {
+                console.log(`Polling messages from ${streamName} stream with ${consumerName} consumer ...`);
+                const jsMsg = await consumer.next();
+                const msg = sc.decode(jsMsg.data);
+                const timestamp = new Date(msg.timestamp);
+                document.querySelector("#messages").value += `${jsMsg.seq}: ${msg.mawb} send at ${new Date(timestamp).toLocaleTimeString()}`;
+                await delay(get_processing_time());
+                document.querySelector("#messages").value += `, processed at ${(new Date()).toLocaleTimeString()}\n`;
+                jsMsg.ack();
+            } catch (err) {
+                if (err.message != "no messages" && err.message != "TIMEOUT") {
+                    console.error(err.name, err.message);
+                }
+            }
+            setTimeout(process, 1000);
+        }
+
+        process();
+
+    </script>
+</head>
+
+<body>
+    <header>
+        <h1>Integration Service</h1>
+    </header>
+    <div class="container">
+        <div class="row">
+            <div class="column is-1 form">
+                <h2>Processing time</h2>
+                <input id="number" type="number" value="1200"></input><span>ms</span>
+            </div>
+            <div class="column is-4 form">
+                <h2>Processing log</h2>
+                <textarea id="messages" rows="10">10</textarea>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
