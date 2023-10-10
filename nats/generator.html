@@ -63,6 +63,26 @@
         const jsm = await nc.jetstreamManager();
         const js = nc.jetstream();
 
+        const kv = await js.views.kv("mawb");
+        // watch key
+        (async () => {
+            const watch = await kv.watch({key: "generator.mawbs"});
+            for await (const e of watch) {
+                const value = sc.decode(e.value);
+                const mawbs = value.mawbs.join("\n");
+
+                if (document.querySelector("#mawbs").value != mawbs) {
+                    console.log(`Update mawbs ${mawbs}`);
+                    document.querySelector("#mawbs").value = mawbs;
+                }
+            }
+        })();
+
+        window.update_mawbs = async function (el) {
+            const mawbs = el.value.split("\n");
+            kv.put("generator.mawbs", sc.encode({mawbs}));
+        };
+
         const streamName = "mawb";
         const subjects = ["mawb.>"];
         const stream = await jsm.streams.add({
@@ -117,7 +137,7 @@
         <div class="row">
             <div class="column form">
                 <h2>MAWBS</h2>
-                <textarea id="mawbs" cols="11" rows="10">LUH01234560</textarea>
+                <textarea id="mawbs" cols="11" rows="10" onchange="update_mawbs(this)">LUH01234560</textarea>
             </div>
             <div class="column form">
                 <h2>Number of messages</h2>
