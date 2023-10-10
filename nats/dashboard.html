@@ -132,7 +132,7 @@
                 const msg = sc.decode(jsMsg.data);
                 const timestamp = new Date(msg.timestamp);
 
-                value += `${jsMsg.seq}: ${msg.mawb} send at ${new Date(timestamp).toLocaleTimeString()}, processed at ${(new Date()).toLocaleTimeString()}\n`;
+                value += `${jsMsg.seq}: ${msg.mawb} send at ${new Date(timestamp).toLocaleTimeString()}\n`;
                 rows++;
             }
 
